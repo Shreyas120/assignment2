@@ -14,7 +14,7 @@ def get_args_parser():
     parser = argparse.ArgumentParser("Singleto3D", add_help=False)
     # Model parameters
     parser.add_argument("--arch", default="resnet18", type=str)
-    parser.add_argument("--lr", default=4e-4, type=float)
+    parser.add_argument("--lr", default=1e-4, type=float)
     parser.add_argument("--max_iter", default=100000, type=int)
     parser.add_argument("--batch_size", default=32, type=int)
     parser.add_argument("--num_workers", default=4, type=int)
@@ -24,8 +24,10 @@ def get_args_parser():
     parser.add_argument("--n_points", default=1000, type=int)
     parser.add_argument("--w_chamfer", default=1.0, type=float)
     parser.add_argument("--w_smooth", default=0.1, type=float)
-    parser.add_argument("--save_freq", default=2000, type=int)
+    parser.add_argument("--save_freq", default=100, type=int)
     parser.add_argument("--load_checkpoint", action="store_true")
+    parser.add_argument("--load_feat", action="store_true")
+    parser.add_argument("--device", default="cuda", type=str)
     return parser
 
 
@@ -85,6 +87,7 @@ def train_model(args):
     train_loader = iter(loader)
 
     model = SingleViewto3D(args)
+    print(model)
     model.to(args.device)
     model.train()
 
@@ -149,4 +152,5 @@ def train_model(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Singleto3D", parents=[get_args_parser()])
     args = parser.parse_args()
+    torch.cuda.empty_cache()
     train_model(args)
