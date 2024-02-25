@@ -19,14 +19,13 @@ class SingleViewto3D(nn.Module):
 
         # define decoder
         if args.type == "vox":
-            #1e-4 works sab jaga bc
             # Input: b x 512
             # Output: b x 32 x 32 x 32
             self.threeDFeats = torch.nn.Sequential(
                 torch.nn.Linear(512, 1024),
-                torch.nn.Tanh(),
+                torch.nn.Sigmoid(),
                 torch.nn.Linear(1024, 2048),
-                torch.nn.Tanh()
+                torch.nn.Sigmoid(),
             )
             
             self.layer1 = torch.nn.Sequential(
