@@ -22,8 +22,13 @@ class SingleViewto3D(nn.Module):
             #1e-4 works sab jaga bc
             # Input: b x 512
             # Output: b x 32 x 32 x 32
-            self.threeDFeats = torch.nn.Linear(512, 2048)
-
+            self.threeDFeats = torch.nn.Sequential(
+                torch.nn.Linear(512, 1024),
+                torch.nn.Tanh(),
+                torch.nn.Linear(1024, 2048),
+                torch.nn.Tanh()
+            )
+            
             self.layer1 = torch.nn.Sequential(
                 torch.nn.ConvTranspose3d(256, 128, kernel_size=4, stride=2, bias=False, padding=1),
                 torch.nn.BatchNorm3d(128),
