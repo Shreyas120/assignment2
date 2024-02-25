@@ -8,7 +8,7 @@ from model import SingleViewto3D
 from pytorch3d.datasets.r2n2.utils import collate_batched_R2N2
 from pytorch3d.ops import sample_points_from_meshes
 from r2n2_custom import R2N2
-
+import wandb, signal, sys #logging
 
 def get_args_parser():
     parser = argparse.ArgumentParser("Singleto3D", add_help=False)
@@ -90,6 +90,16 @@ def train_model(args):
     print(model)
     model.to(args.device)
     model.train()
+    
+    #Wandb logging 
+    wb_logger = wandb.init(project="l3d_a2", config=vars(args))
+    # Log the model summary file as an artifact
+    model_summary_file = "model_summary.txt"
+    with open(model_summary_file, "w") as f:
+        print(model, file=f)
+    artifact = wandb.Artifact(name="model_summary", type="model")
+    artifact.add_file(model_summary_file)
+    wb_logger.log_artifact(artifact)
 
     # ============ preparing optimizer ... ============
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)  # to use with ViTs
@@ -138,8 +148,10 @@ def train_model(args):
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                 },
-                f"checkpoint_{args.type}.pth",
+                f"checkpoint_{args.type}_{wb_logger.name}.pth",
             )
+        if (step % 100) == 0:
+            wb_logger.log({"Loss": loss_vis}, step=step)
 
         print(
             "[%4d/%4d]; ttime: %.0f (%.2f, %.2f); loss: %.3f"
@@ -148,8 +160,13 @@ def train_model(args):
 
     print("Done!")
 
-
+def signal_handler(sig, frame):
+    print('You pressed Ctrl+C! Closing wandb run...')
+    wandb.finish()
+    sys.exit(0)
+    
 if __name__ == "__main__":
+    signal.signal(signal.SIGINT, signal_handler)
     parser = argparse.ArgumentParser("Singleto3D", parents=[get_args_parser()])
     args = parser.parse_args()
     torch.cuda.empty_cache()

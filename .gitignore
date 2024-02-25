@@ -1,3 +1,5 @@
 *.pyc
 r2n2_shapenet_dataset/
 shreyasj/data/
+*.pth
+*.png
