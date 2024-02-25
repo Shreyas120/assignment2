@@ -65,17 +65,17 @@ class threeDObject:
         if self.dtype=='point':
             if not isinstance(data, Pointclouds):
                 raise ValueError("Expected data to be of type pytorch3D.Structures.Pointclouds")
-            self.data = data
+            self.data = data.to(self.device)
 
         elif self.dtype=='mesh':
             if not isinstance(data, Meshes):
                 raise ValueError("Expected data to be of type pytorch3D.Structures.Meshes")
-            self.data = data
+            self.data = data.to(self.device)
 
         elif self.dtype=='vox':
             if not isinstance(data, torch.Tensor):
                 raise ValueError("Invalid data type for voxel or missing coordinates")
-            self.data = data
+            self.data = data.to(self.device)
         
         self.name = name if name is not None else self.name
 
@@ -95,7 +95,9 @@ class threeDObject:
                 # data = Pointclouds(points=[points])
 
             elif isinstance(self.renderer, MeshRenderer):
-                data = p3d.ops.cubify(self.data.unsqueeze(0), thresh=0.5) 
+                if len(self.data.shape) == 3:
+                    self.data = self.data.unsqueeze(0) #add batch dimension
+                data = p3d.ops.cubify(self.data, thresh=0.5) 
                 data.textures = p3d.renderer.TexturesVertex((torch.ones_like(data.verts_packed()) * torch.tensor((0,0,0)).to(self.device)).unsqueeze(0))
                 
         else:
