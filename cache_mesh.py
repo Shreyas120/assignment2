@@ -4,11 +4,11 @@ import time
 import dataset_location
 import losses
 import torch
-from model import SingleViewto3D
+import pickle
 from pytorch3d.datasets.r2n2.utils import collate_batched_R2N2
 from pytorch3d.ops import sample_points_from_meshes
 from r2n2_custom import R2N2
-import wandb
+
 
 def get_args_parser():
     parser = argparse.ArgumentParser("Singleto3D", add_help=False)
@@ -18,15 +18,13 @@ def get_args_parser():
     parser.add_argument("--max_iter", default=15000, type=int)
     parser.add_argument("--batch_size", default=32, type=int)
     parser.add_argument("--num_workers", default=4, type=int)
-    parser.add_argument(
-        "--type", default="vox", choices=["vox", "point", "mesh"], type=str
-    )
+    parser.add_argument("--type", default="vox", choices=["vox", "point", "mesh"], type=str)
     parser.add_argument("--n_points", default=1000, type=int)
     parser.add_argument("--w_chamfer", default=1.0, type=float)
     parser.add_argument("--w_smooth", default=0.1, type=float)
-    parser.add_argument("--save_freq", default=500, type=int)
+    parser.add_argument("--save_freq", default=2000, type=int)
     parser.add_argument("--load_checkpoint", action="store_true")
-    parser.add_argument("--load_feat", action="store_true")
+    parser.add_argument('--load_feat', action='store_true') 
     parser.add_argument("--device", default="cuda", type=str)
     return parser
 
@@ -71,99 +69,48 @@ def train_model(args):
         dataset_location.SHAPENET_PATH,
         dataset_location.R2N2_PATH,
         dataset_location.SPLITS_PATH,
-        return_voxels=True,
+        return_voxels=False,
         return_feats=args.load_feat,
-        use_cache=True,
     )
 
     loader = torch.utils.data.DataLoader(
         r2n2_dataset,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
+        batch_size=1,
+        num_workers=0,
         collate_fn=collate_batched_R2N2,
-        pin_memory=True,
+        pin_memory=False,
         drop_last=True,
-        shuffle=True,
+        shuffle=False,
     )
+
     train_loader = iter(loader)
 
-    model = SingleViewto3D(args)
-    print(model)
-    model.to(args.device)
-    model.train()
-    
-    #Wandb logging 
-    wb_logger = wandb.init(project="l3d_a2", config=vars(args))
-    # Log the model summary file as an artifact
-    model_summary_file = "model_summary.txt"
-    with open(model_summary_file, "w") as f:
-        print(model, file=f)
-    artifact = wandb.Artifact(name="model_summary", type="model")
-    artifact.add_file(model_summary_file)
-    wb_logger.log_artifact(artifact)
-
-    # ============ preparing optimizer ... ============
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)  # to use with ViTs
-    start_iter = 0
+    print("Loading training data !")
+    max_iter = len(train_loader)
+    epoch = -1
     start_time = time.time()
 
-    if args.load_checkpoint:
-        checkpoint = torch.load(f"checkpoint_{args.type}.pth")
-        model.load_state_dict(checkpoint["model_state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        start_iter = checkpoint["step"]
-        print(f"Succesfully loaded iter {start_iter}")
-
-    print("Starting training !")
-    for step in range(start_iter, args.max_iter):
+    for step in range(0, max_iter):
         iter_start_time = time.time()
 
         if step % len(train_loader) == 0:  # restart after one epoch
             train_loader = iter(loader)
+            epoch+=1
 
         read_start_time = time.time()
 
         feed_dict = next(train_loader)
-
-        images_gt, ground_truth_3d = preprocess(feed_dict, args)
+        # images_gt, ground_truth_3d = preprocess(feed_dict, args)
         read_time = time.time() - read_start_time
-
-        prediction_3d = model(images_gt, args)
-
-        loss = calculate_loss(prediction_3d, ground_truth_3d, args)
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
         total_time = time.time() - start_time
         iter_time = time.time() - iter_start_time
+        print("Step: ", step)
 
-        loss_vis = loss.cpu().item()
+    print("Pickling data")
+    loader.dataset._save_mesh_pickle()
 
-        if (step % args.save_freq) == 0 and step > 0:
-            print(f"Saving checkpoint at step {step}")
-            torch.save(
-                {
-                    "step": step,
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                },
-                f"checkpoint_{args.type}_{wb_logger.name}.pth",
-            )
-        if (step % 100) == 0:
-            wb_logger.log({"Loss": loss_vis}, step=step)
-
-        print(
-            "[%4d/%4d]; ttime: %.0f (%.2f, %.2f); loss: %.3f"
-            % (step, args.max_iter, total_time, read_time, iter_time, loss_vis)
-        )
-
-    print("Done!")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Singleto3D", parents=[get_args_parser()])
     args = parser.parse_args()
-    torch.cuda.empty_cache()
     train_model(args)
-    wandb.finish()
