@@ -171,10 +171,7 @@ def plot(srcs: list, tgt, type: str):
         image = renderObjects(objects=[srcObj, targObj],cameras=cameras)
         images_list.append(image)
 
-    full_path = args.output_path / (f'fit_{args.type}.gif')
-    imageio.mimsave(full_path, images_list, fps=30)
-    print(f'Saved the 360 GIF for fitting {args.type} in {full_path}')
-
+    return images_list
 
 def train_model(args):
     r2n2_dataset = R2N2("train", dataset_location.SHAPENET_PATH, dataset_location.R2N2_PATH, dataset_location.SPLITS_PATH, return_voxels=True)
@@ -199,7 +196,7 @@ def train_model(args):
         # fitting
         q = generate_intervals(args.max_iter, mapping={0: 100})
         srcs = fit_voxel(voxels_src, voxels_tgt, args)
-        plot(srcs, voxels_tgt, "vox") 
+        images_list = plot(srcs, voxels_tgt, "vox") 
 
 
     elif args.type == "point":
@@ -211,7 +208,7 @@ def train_model(args):
         # fitting
         q = generate_intervals(args.max_iter, mapping={0: 100})
         srcs = fit_pointcloud(pointclouds_src, pointclouds_tgt, args) 
-        plot(srcs, pointclouds_tgt, "point") 
+        images_list = plot(srcs, pointclouds_tgt, "point") 
     
     elif args.type == "mesh":
         # initialization
@@ -222,7 +219,11 @@ def train_model(args):
         # fitting
         q = generate_intervals(args.max_iter, mapping={0: 100})
         srcs = fit_mesh(mesh_src, mesh_tgt, args)        
-        plot(srcs, mesh_tgt, "mesh") 
+        images_list = plot(srcs, mesh_tgt, "mesh") 
+
+    full_path = args.output_path / (f'fit_{args.type}.gif')
+    imageio.mimsave(full_path, images_list, fps=30)
+    print(f'Saved the 360 GIF for fitting {args.type} in {full_path}')
 
 
 def generate_intervals(N, mapping={0: 100, 400: 200, 2000: 500, 5000: 1000}):

@@ -14,20 +14,26 @@ import matplotlib.pyplot as plt
 from pytorch3d.transforms import Rotate, axis_angle_to_matrix
 import math
 import numpy as np
+from pathlib import Path
+import os
+from render import threeDObject, renderObjects
+from pytorch3d.structures import Pointclouds
+import imageio
 
 def get_args_parser():
     parser = argparse.ArgumentParser('Singleto3D', add_help=False)
     parser.add_argument('--arch', default='resnet18', type=str)
-    parser.add_argument('--vis_freq', default=1000, type=int)
+    parser.add_argument('--vis_freq', default=110, type=int)
     parser.add_argument('--batch_size', default=1, type=int)
     parser.add_argument('--num_workers', default=0, type=int)
     parser.add_argument('--type', default='vox', choices=['vox', 'point', 'mesh'], type=str)
     parser.add_argument('--n_points', default=1000, type=int)
     parser.add_argument('--w_chamfer', default=1.0, type=float)
     parser.add_argument('--w_smooth', default=0.1, type=float)  
-    parser.add_argument('--load_checkpoint', action='store_true')  
+    parser.add_argument('--load_checkpoint', default="", type=str)  
     parser.add_argument('--device', default='cuda', type=str) 
     parser.add_argument('--load_feat', action='store_true') 
+    parser.add_argument('--output_path', default=Path(os.getcwd())/'data'/'shreyasj'/'2', type=Path)
     return parser
 
 def preprocess(feed_dict, args):
@@ -143,9 +149,10 @@ def evaluate_model(args):
     avg_r_score = []
 
     if args.load_checkpoint:
-        checkpoint = torch.load(f'checkpoint_{args.type}.pth')
+        checkpoint = torch.load(f'checkpoint_{args.type}_{args.load_checkpoint}.pth')
         model.load_state_dict(checkpoint['model_state_dict'])
-        print(f"Succesfully loaded iter {start_iter}")
+        loaded_iter = checkpoint['step']
+        print(f"Succesfully loaded iter {loaded_iter} from checkpoint_{args.type}_{args.load_checkpoint}.pth !")
     
     print("Starting evaluating !")
     max_iter = len(eval_loader)
@@ -167,14 +174,35 @@ def evaluate_model(args):
 
         try:
             metrics = evaluate(predictions, mesh_gt, thresholds, args, isovalue=0.5)
+            
+            # visualization block
+            if (step % args.vis_freq) == 0:
+                    
+                # plt.imsave(f'vis/{step}_{args.type}.png', rend)
+                srcObj = None
+                if args.type == "vox":
+                    srcObj = threeDObject(f"Predicted {args.type}", "vox", predictions[0,:,:,:], args.device)
+                elif args.type == "point":
+                    srcObj = threeDObject(f"Predicted {args.type}", "point", Pointclouds(points=predictions, features=torch.zeros_like(predictions)), args.device)
+                elif args.type == "mesh":
+                    predictions.textures = pytorch3d.renderer.TexturesVertex((torch.ones_like(predictions.verts_packed()).to(args.device) * torch.tensor((0,0,0)).to(args.device)).unsqueeze(0))
+                    srcObj = threeDObject(f"Predicted {args.type}", "mesh",  predictions, args.device)
+                
+                mesh_gt.textures = pytorch3d.renderer.TexturesVertex((torch.ones_like(mesh_gt.verts_packed()).to(args.device) * torch.tensor((0,0,0)).to(args.device)).unsqueeze(0))
+                targObj = threeDObject("GT mesh", "mesh", mesh_gt, args.device)
 
-            # TODO:
-            # if (step % args.vis_freq) == 0:
-            #     # visualization block
-            #     #  rend = 
-            #     plt.imsave(f'vis/{step}_{args.type}.png', rend)
+                images_list = []
+                for cam_angle in range(0, 360, 10):
+                    R, T = pytorch3d.renderer.cameras.look_at_view_transform(dist=2.5, elev=0, azim=cam_angle, degrees=True)
+                    cameras = pytorch3d.renderer.FoVPerspectiveCameras(R=R, T=T, fov=60, device=args.device)
+                    image = renderObjects(objects=[srcObj, targObj],cameras=cameras)
+                    images_list.append(image)
         
-
+                full_path = args.output_path / (f'eval_{args.type}_{step}.gif')
+                imageio.mimsave(full_path, images_list, fps=15)
+                plt.imsave(args.output_path / (f'eval_{args.type}_gtimg_{step}.png'), images_gt[0,...].cpu().numpy())
+                print(f'Saved the 360 GIF for evaluationg of {args.type} in {full_path}')
+        
             total_time = time.time() - start_time
             iter_time = time.time() - iter_start_time
 
