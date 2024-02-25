@@ -199,7 +199,7 @@ def evaluate_model(args):
                     images_list.append(image)
         
                 full_path = args.output_path / (f'eval_{args.type}_{step}.gif')
-                imageio.mimsave(full_path, images_list, fps=15)
+                imageio.mimsave(full_path, images_list, fps=15, loop=0)
                 plt.imsave(args.output_path / (f'eval_{args.type}_gtimg_{step}.png'), images_gt[0,...].cpu().numpy())
                 print(f'Saved the 360 GIF for evaluationg of {args.type} in {full_path}')
         

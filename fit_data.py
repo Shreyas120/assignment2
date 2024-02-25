@@ -222,7 +222,7 @@ def train_model(args):
         images_list = plot(srcs, mesh_tgt, "mesh") 
 
     full_path = args.output_path / (f'fit_{args.type}.gif')
-    imageio.mimsave(full_path, images_list, fps=30)
+    imageio.mimsave(full_path, images_list, fps=30, loop=0)
     print(f'Saved the 360 GIF for fitting {args.type} in {full_path}')
 
 
