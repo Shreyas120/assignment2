@@ -8,14 +8,14 @@ from model import SingleViewto3D
 from pytorch3d.datasets.r2n2.utils import collate_batched_R2N2
 from pytorch3d.ops import sample_points_from_meshes
 from r2n2_custom import R2N2
-import wandb, signal, sys #logging
+import wandb
 
 def get_args_parser():
     parser = argparse.ArgumentParser("Singleto3D", add_help=False)
     # Model parameters
     parser.add_argument("--arch", default="resnet18", type=str)
     parser.add_argument("--lr", default=1e-4, type=float)
-    parser.add_argument("--max_iter", default=100000, type=int)
+    parser.add_argument("--max_iter", default=15000, type=int)
     parser.add_argument("--batch_size", default=32, type=int)
     parser.add_argument("--num_workers", default=4, type=int)
     parser.add_argument(
@@ -24,7 +24,7 @@ def get_args_parser():
     parser.add_argument("--n_points", default=1000, type=int)
     parser.add_argument("--w_chamfer", default=1.0, type=float)
     parser.add_argument("--w_smooth", default=0.1, type=float)
-    parser.add_argument("--save_freq", default=100, type=int)
+    parser.add_argument("--save_freq", default=500, type=int)
     parser.add_argument("--load_checkpoint", action="store_true")
     parser.add_argument("--load_feat", action="store_true")
     parser.add_argument("--device", default="cuda", type=str)
@@ -160,14 +160,9 @@ def train_model(args):
 
     print("Done!")
 
-def signal_handler(sig, frame):
-    print('You pressed Ctrl+C! Closing wandb run...')
-    wandb.finish()
-    sys.exit(0)
-    
 if __name__ == "__main__":
-    signal.signal(signal.SIGINT, signal_handler)
     parser = argparse.ArgumentParser("Singleto3D", parents=[get_args_parser()])
     args = parser.parse_args()
     torch.cuda.empty_cache()
     train_model(args)
+    wandb.finish()

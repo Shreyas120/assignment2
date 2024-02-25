@@ -22,7 +22,7 @@ def get_args_parser():
     parser.add_argument('--batch_size', default=1, type=int)
     parser.add_argument('--num_workers', default=0, type=int)
     parser.add_argument('--type', default='vox', choices=['vox', 'point', 'mesh'], type=str)
-    parser.add_argument('--n_points', default=5000, type=int)
+    parser.add_argument('--n_points', default=1000, type=int)
     parser.add_argument('--w_chamfer', default=1.0, type=float)
     parser.add_argument('--w_smooth', default=0.1, type=float)  
     parser.add_argument('--load_checkpoint', action='store_true')  
@@ -85,11 +85,11 @@ def compute_sampling_metrics(pred_points, gt_points, thresholds, eps=1e-8):
     metrics = {k: v.cpu() for k, v in metrics.items()}
     return metrics
 
-def evaluate(predictions, mesh_gt, thresholds, args):
+def evaluate(predictions, mesh_gt, thresholds, args, isovalue=0.5):
     if args.type == "vox":
         voxels_src = predictions
         H,W,D = voxels_src.shape[2:]
-        vertices_src, faces_src = mcubes.marching_cubes(voxels_src.detach().cpu().squeeze().numpy(), isovalue=0.5)
+        vertices_src, faces_src = mcubes.marching_cubes(voxels_src.detach().cpu().squeeze().numpy(), isovalue=isovalue)
         vertices_src = torch.tensor(vertices_src).float()
         faces_src = torch.tensor(faces_src.astype(int))
         mesh_src = pytorch3d.structures.Meshes([vertices_src], [faces_src])
@@ -162,31 +162,40 @@ def evaluate_model(args):
 
         predictions = model(images_gt, args)
 
-        metrics = evaluate(predictions, mesh_gt, thresholds, args)
+        if args.type == "vox":
+            predictions = predictions.permute(0,1,4,3,2)
 
-        # TODO:
-        # if (step % args.vis_freq) == 0:
-        #     # visualization block
-        #     #  rend = 
-        #     plt.imsave(f'vis/{step}_{args.type}.png', rend)
-      
+        try:
+            metrics = evaluate(predictions, mesh_gt, thresholds, args, isovalue=0.5)
 
-        total_time = time.time() - start_time
-        iter_time = time.time() - iter_start_time
+            # TODO:
+            # if (step % args.vis_freq) == 0:
+            #     # visualization block
+            #     #  rend = 
+            #     plt.imsave(f'vis/{step}_{args.type}.png', rend)
+        
 
-        f1_05 = metrics['F1@0.050000']
-        avg_f1_score_05.append(f1_05)
-        avg_p_score.append(torch.tensor([metrics["Precision@%f" % t] for t in thresholds]))
-        avg_r_score.append(torch.tensor([metrics["Recall@%f" % t] for t in thresholds]))
-        avg_f1_score.append(torch.tensor([metrics["F1@%f" % t] for t in thresholds]))
+            total_time = time.time() - start_time
+            iter_time = time.time() - iter_start_time
 
-        print("[%4d/%4d]; ttime: %.0f (%.2f, %.2f); F1@0.05: %.3f; Avg F1@0.05: %.3f" % (step, max_iter, total_time, read_time, iter_time, f1_05, torch.tensor(avg_f1_score_05).mean()))
-    
+            f1_05 = metrics['F1@0.050000']
+            avg_f1_score_05.append(f1_05)
+            avg_p_score.append(torch.tensor([metrics["Precision@%f" % t] for t in thresholds]))
+            avg_r_score.append(torch.tensor([metrics["Recall@%f" % t] for t in thresholds]))
+            avg_f1_score.append(torch.tensor([metrics["F1@%f" % t] for t in thresholds]))
 
+            print("[%4d/%4d]; ttime: %.0f (%.2f, %.2f); F1@0.05: %.3f; Avg F1@0.05: %.3f" % (step, max_iter, total_time, read_time, iter_time, f1_05, torch.tensor(avg_f1_score_05).mean()))
+        
+        except ValueError as ve:
+            print(f"ValueError: {ve} when evaluating {args.type} at isovalue 0.5, trying 0.3 instead.")
+            try:
+               metrics = evaluate(predictions, mesh_gt, thresholds, args, isovalue=0.5)
+            except ValueError as ve2:
+                print(f"ValueError: {ve} when evaluating {args.type} at isovalue 0.3, skipping this sample.")
+
+    print(f'Done! Note: Skipped {max_iter - len(avg_f1_score)} samples.')
     avg_f1_score = torch.stack(avg_f1_score).mean(0)
-
     save_plot(thresholds, avg_f1_score,  args)
-    print('Done!')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Singleto3D', parents=[get_args_parser()])

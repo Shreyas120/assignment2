@@ -4,3 +4,4 @@ shreyasj/data/
 wandb/
 *.pth
 *.png
+*.txt
