@@ -17,8 +17,8 @@ def get_args_parser():
     parser.add_argument("--lr", default=1e-4, type=float)
     parser.add_argument("--max_iter", default=15000, type=int)
     parser.add_argument("--batch_size", default=32, type=int)
-    parser.add_argument("--num_workers", default=4, type=int)
-    parser.add_argument("--type", default="vox", choices=["vox", "point", "mesh"], type=str)
+    parser.add_argument("--num_workers", default=16, type=int)
+    parser.add_argument("--type", default="vox", choices=["vox", "point", "mesh", "point_h"], type=str)
     parser.add_argument("--n_points", default=1000, type=int)
     parser.add_argument("--w_chamfer", default=1.0, type=float)
     parser.add_argument("--w_smooth", default=0.1, type=float)
@@ -34,7 +34,7 @@ def preprocess(feed_dict, args):
     if args.type == "vox":
         voxels = feed_dict["voxels"].float()
         ground_truth_3d = voxels
-    elif args.type == "point":
+    elif args.type == "point" or args.type == "point_h":
         mesh = feed_dict["mesh"]
         pointclouds_tgt = sample_points_from_meshes(mesh, args.n_points)
         ground_truth_3d = pointclouds_tgt
@@ -50,7 +50,7 @@ def preprocess(feed_dict, args):
 def calculate_loss(predictions, ground_truth, args):
     if args.type == "vox":
         loss = losses.voxel_loss(predictions, ground_truth)
-    elif args.type == "point":
+    elif args.type == "point" or args.type == "point_h":
         loss = losses.chamfer_loss(predictions, ground_truth)
     elif args.type == "mesh":
         sample_trg = sample_points_from_meshes(ground_truth, args.n_points)

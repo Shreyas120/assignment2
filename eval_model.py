@@ -177,7 +177,7 @@ def interpret_model(args):
             visualize_layer(layer_data, ax, layer_name)
         
         plt.tight_layout()
-        plt.show()
+        plt.savefig(args.output_path / (f'interpret_{step}.png'))
 
 
     r2n2_dataset = R2N2("test", dataset_location.SHAPENET_PATH, dataset_location.R2N2_PATH, dataset_location.SPLITS_PATH, return_voxels=True, return_feats=args.load_feat)
@@ -205,14 +205,12 @@ def interpret_model(args):
         loaded_iter = checkpoint['step']
         print(f"Succesfully loaded iter {loaded_iter} from checkpoint_{args.type}_{args.load_checkpoint}.pth !")
 
-    max_iter = len(eval_loader)
-    for step in range(max_iter):
 
+    for step in range(10):
         feed_dict = next(eval_loader)
         images_gt, mesh_gt = preprocess(feed_dict, args)
         predictions = model(images_gt, args)
         visualize_layers_with_input_image(images_gt[0,...].cpu().numpy(), predictions)
-        input("Press Enter to continue...")
     
 
 def evaluate_model(args):

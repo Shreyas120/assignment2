@@ -63,7 +63,17 @@ class SingleViewto3D(nn.Module):
             self.n_point = args.n_points
             layer0 = torch.nn.Sequential(torch.nn.Linear(512, self.n_point), torch.nn.LeakyReLU())
             layer1 = torch.nn.Sequential(torch.nn.Linear(self.n_point, self.n_point*3), torch.nn.Tanh())
-            self.decoder = torch.nn.Sequential(layer0, layer1)      
+            self.decoder = torch.nn.Sequential(layer0, layer1)    
+
+        elif args.type == "point_h":
+            # Input: b x 512
+            # Output: b x args.n_points x 3  
+            self.n_point = args.n_points
+            layer0 = torch.nn.Sequential(torch.nn.Linear(512, 1024), torch.nn.LeakyReLU())
+            layer1 = torch.nn.Sequential(torch.nn.Linear(1024, 2048), torch.nn.LeakyReLU())
+            layer2 = torch.nn.Sequential(torch.nn.Linear(2048, 3*(self.n_point*3)), torch.nn.Tanh())
+            layer3 = torch.nn.Sequential(torch.nn.Linear(3*(self.n_point*3), self.n_point*3), torch.nn.Tanh())
+            self.decoder = torch.nn.Sequential(layer0, layer1, layer2, layer3)       
 
         elif args.type == "mesh":
             # Input: b x 512
@@ -89,12 +99,24 @@ class SingleViewto3D(nn.Module):
 
         # call decoder
         if args.type == "vox":
-            threeDFeats = self.threeDFeats(encoded_feat)
-            threeDFeats = threeDFeats.view(-1, 256, 2, 2, 2)
-            voxels_pred =  self.decoder(threeDFeats)        
-            return voxels_pred
+            if args.viz_vox_layers == True:
+                print("viz_vox_layers is True, returning intermediate layers")
+                threeDFeats = self.threeDFeats(encoded_feat)
+                results['threeDFeats'] = threeDFeats.view(-1, 256, 2, 2, 2)
+                results["layer1"] = self.layer1(results['threeDFeats'])
+                results["layer2"] = self.layer2(results["layer1"])
+                results["layer3"] = self.layer3(results["layer2"])
+                results["layer4"] = self.layer4(results["layer3"])
+                results["layer5"] = self.layer5(results["layer4"])
+                return results
+            
+            else:
+                threeDFeats = self.threeDFeats(encoded_feat)
+                threeDFeats = threeDFeats.view(-1, 256, 2, 2, 2)
+                voxels_pred =  self.decoder(threeDFeats)        
+                return voxels_pred
 
-        elif args.type == "point":
+        elif args.type == "point" or args.type == "point_h":
             gen_volume = self.decoder(encoded_feat)
             pointclouds_pred = gen_volume.view(-1, args.n_points, 3)
             return pointclouds_pred

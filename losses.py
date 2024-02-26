@@ -30,7 +30,6 @@ def chamfer_loss(point_cloud_src,point_cloud_tgt):
 	
 	loss = loss / b
 	# print(f"Cham: {chamfer_distance(point_cloud_src, point_cloud_tgt)[0]}, Me: {loss}")
-	return chamfer_distance(point_cloud_src, point_cloud_tgt)[0]
 	return loss
 
 def smoothness_loss(mesh_src):
