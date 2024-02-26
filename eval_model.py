@@ -33,6 +33,7 @@ def get_args_parser():
     parser.add_argument('--load_checkpoint', default="", type=str)  
     parser.add_argument('--device', default='cuda', type=str) 
     parser.add_argument('--load_feat', action='store_true') 
+    parser.add_argument('--viz_vox_layers', action='store_true') 
     parser.add_argument('--output_path', default=Path(os.getcwd())/'data'/'shreyasj'/'2', type=Path)
     return parser
 
@@ -109,7 +110,7 @@ def evaluate(predictions, mesh_gt, thresholds, args, isovalue=0.5):
         pred_points = T_transform.transform_points(pred_points)
         # re-center the predicted points
         pred_points = pred_points - pred_points.mean(1, keepdim=True)
-    elif args.type == "point":
+    elif args.type == "point" or args.type == "point_h":
         pred_points = predictions.cpu()
     elif args.type == "mesh":
         pred_points = sample_points_from_meshes(predictions, args.n_points).cpu()
@@ -120,7 +121,99 @@ def evaluate(predictions, mesh_gt, thresholds, args, isovalue=0.5):
     metrics = compute_sampling_metrics(pred_points, gt_points, thresholds)
     return metrics
 
+def interpret_model(args):
 
+    def visualize_layers_with_input_image(input_image, layers_dict):
+        
+        # Function to visualize each layer in 3D
+        def visualize_layer(layer, ax, layer_name):
+            layer = layer.squeeze(0) #D x S x S x S
+    
+            # Calculate different statistics for RGB channels
+            R_channel = torch.max(layer, dim=0).values
+            G_channel = torch.mean(layer, dim=0)
+            B_channel = torch.min(layer, dim=0).values
+
+            # Helper function for normalization
+            def safe_normalize(channel):
+                min_val = channel.min()
+                max_val = channel.max()
+                if min_val==max_val:
+                    normalized_channel = channel 
+                else:
+                    normalized_channel = (channel - min_val) / (max_val - min_val)
+                return normalized_channel.detach().cpu().numpy()
+
+            # Apply safe normalization to each channel
+            R_norm_np = safe_normalize(R_channel)
+            G_norm_np = safe_normalize(G_channel)
+            B_norm_np = safe_normalize(B_channel)
+
+            # Expand dimensions to [S, S, S, 1] for concatenation
+            R_expanded = np.expand_dims(R_norm_np, axis=-1)
+            G_expanded = np.expand_dims(G_norm_np, axis=-1)
+            B_expanded = np.expand_dims(B_norm_np, axis=-1)
+
+            rgb = np.concatenate([R_expanded, G_expanded, B_expanded], axis=-1)
+
+            activations = torch.max(layer, dim=0).values
+            voxels = activations > 0.3
+    
+            ax.voxels(voxels, facecolors=rgb, edgecolors='black', linewidth=0.5, shade=False)
+            ax.title.set_text(layer_name)
+        
+        num_layers = len(layers_dict)
+        fig = plt.figure(figsize=(20, 10))
+        
+        # Visualize the input image
+        ax0 = fig.add_subplot(1, num_layers + 1, 1)
+        ax0.imshow(input_image)  # Convert to numpy array for visualization
+        ax0.title.set_text('Input Image')
+        ax0.axis('off')
+        
+        # Visualize each layer in a subplot
+        for i, (layer_name, layer_data) in enumerate(layers_dict.items(), start=1):
+            ax = fig.add_subplot(1, num_layers + 1, i + 1, projection='3d')
+            visualize_layer(layer_data, ax, layer_name)
+        
+        plt.tight_layout()
+        plt.show()
+
+
+    r2n2_dataset = R2N2("test", dataset_location.SHAPENET_PATH, dataset_location.R2N2_PATH, dataset_location.SPLITS_PATH, return_voxels=True, return_feats=args.load_feat)
+
+    loader = torch.utils.data.DataLoader(
+        r2n2_dataset,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        collate_fn=collate_batched_R2N2,
+        pin_memory=True,
+        drop_last=True)
+    eval_loader = iter(loader)
+
+    model = SingleViewto3D(args)
+    model.to(args.device)
+    model.eval()
+
+    model = SingleViewto3D(args)
+    model.to(args.device)
+    model.eval()
+
+    if args.load_checkpoint:
+        checkpoint = torch.load(f'checkpoint_{args.type}_{args.load_checkpoint}.pth')
+        model.load_state_dict(checkpoint['model_state_dict'])
+        loaded_iter = checkpoint['step']
+        print(f"Succesfully loaded iter {loaded_iter} from checkpoint_{args.type}_{args.load_checkpoint}.pth !")
+
+    max_iter = len(eval_loader)
+    for step in range(max_iter):
+
+        feed_dict = next(eval_loader)
+        images_gt, mesh_gt = preprocess(feed_dict, args)
+        predictions = model(images_gt, args)
+        visualize_layers_with_input_image(images_gt[0,...].cpu().numpy(), predictions)
+        input("Press Enter to continue...")
+    
 
 def evaluate_model(args):
     r2n2_dataset = R2N2("test", dataset_location.SHAPENET_PATH, dataset_location.R2N2_PATH, dataset_location.SPLITS_PATH, return_voxels=True, return_feats=args.load_feat)
@@ -182,7 +275,7 @@ def evaluate_model(args):
                 srcObj = None
                 if args.type == "vox":
                     srcObj = threeDObject(f"Predicted {args.type}", "vox", predictions[0,:,:,:], args.device)
-                elif args.type == "point":
+                elif args.type == "point" or args.type == "point_h":
                     srcObj = threeDObject(f"Predicted {args.type}", "point", Pointclouds(points=predictions, features=torch.zeros_like(predictions)), args.device)
                 elif args.type == "mesh":
                     predictions.textures = pytorch3d.renderer.TexturesVertex((torch.ones_like(predictions.verts_packed()).to(args.device) * torch.tensor((0,0,0)).to(args.device)).unsqueeze(0))
@@ -228,4 +321,7 @@ def evaluate_model(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Singleto3D', parents=[get_args_parser()])
     args = parser.parse_args()
-    evaluate_model(args)
+    if args.viz_vox_layers:
+        interpret_model(args)
+    else:
+        evaluate_model(args)
